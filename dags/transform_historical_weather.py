@@ -51,35 +51,45 @@ def create_historical_weather_reporting_table(in_table: Table, hot_day_celsius: 
 # import a Astro SDK Table as a pandas dataframe by typing the import as pd.DataFrame
 @aql.dataframe(pool="duckdb")
 def find_hottest_day_birthyear(in_table: pd.DataFrame, birthyear: int):
+
+    if birthyear == None:
+        birthyear = 2022
+
     # print ingested df to the logs
     gv.task_log.info(in_table)
 
     output_df = in_table
 
-    ####### YOUR TRANSFORMATION ##########
+    datemask = pd.to_datetime(output_df['time']).dt.year == int(birthyear)
+
+    gv.task_log.info(datemask)
+
+    output_df = output_df[datemask]
+    output_df.reset_index(inplace = True)
+    gv.task_log.info(output_df)
+
+    output_df = output_df.iloc[output_df.groupby("city")["temperature_2m_max"].agg(pd.Series.idxmax)]
+    output_df.rename(columns = {"city": "City", "temperature_2m_max": "Temp hottest day", "time": "Date hottest day"}, inplace = True)
+    output_df.drop(columns = {"lat", "long"}, inplace = True)
 
     # print result table to the logs
     gv.task_log.info(output_df)
 
     return output_df
+# -------- #
+# Datasets #
+# -------- #
 
+in_historical_dataset = Table(c.IN_HISTORICAL_WEATHER_TABLE_NAME, conn_id=gv.CONN_ID_DUCKDB)
 
 # --- #
 # DAG #
 # --- #
 
-# ---------- #
-# Exercise 1 #
-# ---------- #
-# Schedule this DAG to run as soon as the 'extract_historical_weather_data' DAG has finished running.
-# Tip: You can either add your own Dataset as an outlet in the last task of the previous DAG or
-# use the a Astro Python SDK Table based Dataset as seen in the 'transform_climate_data' DAG.
-
-
 @dag(
     start_date=datetime(2023, 1, 1),
     # this DAG runs as soon as the climate and weather data is ready in DuckDB
-    schedule=None,
+    schedule=[in_historical_dataset],
     catchup=False,
     default_args=gv.default_args,
     description="Runs transformations on climate and current weather data in DuckDB.",

@@ -4,6 +4,7 @@
 # PACKAGE IMPORTS #
 # --------------- #
 
+from airflow import Dataset
 from airflow.decorators import dag, task
 from pendulum import datetime
 import pandas as pd
@@ -22,6 +23,12 @@ from include.meterology_utils import (
     get_lat_long_for_cityname,
     get_historical_weather_from_city_coordinates,
 )
+
+# -------- #
+# Datasets #
+# -------- #
+
+start_dataset = Dataset("start")
 
 # --- #
 # DAG #
@@ -47,7 +54,7 @@ def turn_json_into_table(in_json):
 
 @dag(
     start_date=datetime(2023, 1, 1),
-    schedule=None,
+    schedule=[start_dataset],
     catchup=False,
     default_args=gv.default_args,
     description="DAG that retrieves weather information and saves it to a local JSON.",
@@ -76,16 +83,8 @@ def extract_historical_weather_data():
 
         return historical_weather_and_coordinates.to_dict()
 
-    # ---------- #
-    # Exercise 2 #
-    # ---------- #
-    # Modify the following two lines of code so that both the 'get_lat_long_for_city' task
-    # and the 'get_historical_weather' run on a whole list of cities. Choose 3-5 cities
-    # to retrieve historical weather data for.
-    # Tip: This task can be accomplished by using Dynamic Task Mapping and you only need to modify two lines of code.
-
-    coordinates = get_lat_long_for_city(city="Bern")
-    historical_weather = get_historical_weather(coordinates=coordinates)
+    coordinates = get_lat_long_for_city.expand(city=["London", "Edinburgh", "Cardiff", "Belfast"])
+    historical_weather = get_historical_weather.expand(coordinates=coordinates)
 
     # use the @aql.dataframe decorated function to write the (list of) JSON(s) returned from
     # the get_current_weather task as a permanent table to DuckDB
